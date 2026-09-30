@@ -21,6 +21,9 @@ services:
       DATABASE_URL: postgresql+psycopg2://redact:redact@db:5432/redact
       # 演示用密钥，生产环境务必修改
       SERVICE_KEY: dev-service-key-change-me
+      # 受控发布工作流的操作者凭据目录（JSON：操作者ID -> 个人凭据/角色）
+      # 不配置时使用 app/config.py 中的演示默认值（alice/bob/carol），生产务必覆盖
+      OPERATOR_CREDENTIALS: '{"alice":{"key":"alice-key","roles":["operator","reviewer"]},"bob":{"key":"bob-key","roles":["operator"]},"carol":{"key":"carol-key","roles":["reviewer"]}}'
     ports:
       - "8000:8000"
     depends_on:
