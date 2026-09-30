@@ -21,6 +21,12 @@ services:
       DATABASE_URL: postgresql+psycopg2://redact:redact@db:5432/redact
       # 演示用密钥，生产环境务必修改
       SERVICE_KEY: dev-service-key-change-me
+      # 受控发布操作者凭据（演示值，生产环境务必修改）：
+      # alice 只能申请，bob 只能复核，carol 兼具两种角色
+      REVIEW_CREDENTIALS: >-
+        [{"username":"alice","password":"alice-pw","roles":["operator"]},
+         {"username":"bob","password":"bob-pw","roles":["reviewer"]},
+         {"username":"carol","password":"carol-pw","roles":["operator","reviewer"]}]
     ports:
       - "8000:8000"
     depends_on:

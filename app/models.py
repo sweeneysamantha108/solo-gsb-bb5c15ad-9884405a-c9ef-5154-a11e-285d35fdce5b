@@ -1,7 +1,19 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    false,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,6 +27,8 @@ class Record(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     current_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    # 受控记录：发布必须走“申请-复核”流程，直接发布请求一律拒绝
+    controlled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -74,3 +88,54 @@ class ReadToken(Base):
     )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# 受控发布申请的终态
+REQUEST_PENDING = "pending"
+REQUEST_APPROVED = "approved"
+REQUEST_REJECTED = "rejected"
+REQUEST_STATUSES = (REQUEST_PENDING, REQUEST_APPROVED, REQUEST_REJECTED)
+
+
+class PublishRequest(Base):
+    """受控发布申请：绑定提交时刻的历史版本内容（原文与区间在此冻结）。
+
+    - pending：待复核，可被批准或驳回
+    - approved / rejected：终态，终态唯一、不可变更
+    """
+
+    __tablename__ = "publish_requests"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="ck_publish_requests_status"),
+        Index("ix_publish_requests_record", "record_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("records.id", ondelete="CASCADE"), nullable=False
+    )
+    # 申请目标版本；待审内容冻结在 frozen_* 字段，后续修订不改变它
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    frozen_text: Mapped[str] = mapped_column(Text, nullable=False)
+    frozen_intervals: Mapped[list] = mapped_column(JSONB, nullable=False)
+
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=REQUEST_PENDING, default=REQUEST_PENDING
+    )
+    requested_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    reviewed_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # 令牌到期策略（提交时确定）：相对时长在批准签发时才换算成绝对时刻
+    token_expires_in_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # 批准后同事务生成的快照（驳回时保持为空；令牌经 snapshot_id 关联，不在此冗余）
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("snapshots.id", ondelete="CASCADE"), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

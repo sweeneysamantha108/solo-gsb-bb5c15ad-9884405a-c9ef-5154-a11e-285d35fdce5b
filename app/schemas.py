@@ -35,9 +35,22 @@ class PublishRequest(BaseModel):
         return self
 
 
+class ControlledPublishRequest(PublishRequest):
+    """受控发布申请：复用既有发布的版本与令牌到期字段。"""
+
+
+class ReviewRejectRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=2000)
+
+
 class RecordResponse(BaseModel):
     record_id: UUID
     version: int
+
+
+class ControlledFlagResponse(BaseModel):
+    record_id: UUID
+    controlled: bool
 
 
 class SnapshotInfo(BaseModel):
@@ -50,6 +63,7 @@ class SnapshotInfo(BaseModel):
 class RecordStatusResponse(BaseModel):
     record_id: UUID
     current_version: int
+    controlled: bool
     snapshots: list[SnapshotInfo]
 
 
@@ -73,3 +87,46 @@ class PublicSnapshotResponse(BaseModel):
     version: int
     status: str
     redacted_text: str
+
+
+class PublishRequestInfo(BaseModel):
+    """申请详情：只含元数据，绝不返回冻结原文。"""
+
+    request_id: UUID
+    record_id: UUID
+    version: int
+    status: str
+    requested_by: str
+    reviewed_by: str | None
+    reason: str | None
+    # 提交时选择的令牌到期策略；批准后 token_expires_at 为实际绝对到期时刻
+    token_expires_in_seconds: int | None
+    token_expires_at: datetime | None
+    snapshot_id: UUID | None
+    created_at: datetime
+    decided_at: datetime | None
+
+
+class PublishRequestListResponse(BaseModel):
+    record_id: UUID
+    requests: list[PublishRequestInfo]
+
+
+class ControlledSubmitResponse(BaseModel):
+    request_id: UUID
+    record_id: UUID
+    version: int
+    status: str
+    requested_by: str
+    created_at: datetime
+
+
+class ApproveResponse(BaseModel):
+    request_id: UUID
+    record_id: UUID
+    version: int
+    status: str
+    reviewed_by: str
+    snapshot_id: UUID
+    token: str
+    expires_at: datetime | None
